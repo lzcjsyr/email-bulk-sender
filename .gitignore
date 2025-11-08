@@ -1,0 +1,54 @@
+# 敏感信息 - 不要提交到代码库
+.env
+.env.local
+.env.*.local
+*.password
+*.secret
+
+# Python 虚拟环境
+email_venv/
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE 和编辑器
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+*.code-workspace
+
+# Excel 临时文件
+~$*.xlsx
+~$*.xls
+*.tmp
+
+# 日志文件
+*.log
+logs/
+
+# 测试文件
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 其他
+*.bak
+*.backup

@@ -26,7 +26,7 @@ build/
 *.egg
 
 # IDE 和编辑器
-.vscode/
+# .vscode/ - 保留以便用户快速配置
 .idea/
 .claude/
 *.swp

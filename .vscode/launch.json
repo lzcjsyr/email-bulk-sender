@@ -1,0 +1,44 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "通用附件群发",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/通用附件群发/send_bulk_emails.py",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/email_venv/bin/python",
+            "cwd": "${workspaceFolder}/通用附件群发",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "捐赠证书群发",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/捐赠证书群发/send_certificates.py",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/email_venv/bin/python",
+            "cwd": "${workspaceFolder}/捐赠证书群发",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "解析证书文件名",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/捐赠证书群发/parse_certificates.py",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/email_venv/bin/python",
+            "cwd": "${workspaceFolder}/捐赠证书群发",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}

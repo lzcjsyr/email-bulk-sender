@@ -16,9 +16,23 @@ from email import encoders
 from pathlib import Path
 from dotenv import load_dotenv
 import sys
+import argparse
+from datetime import datetime
 
 # 导入邮件模板配置
 from prompts import SENDER_NAME, EMAIL_SUBJECT, EMAIL_BODY
+
+# 导入工具模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from email_utils import (
+    SMTPConnectionPool, retry_on_failure, validate_email,
+    setup_logger, test_smtp_connection, format_time_remaining
+)
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
 
 # 加载环境变量（从上级目录读取.env文件）
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +44,7 @@ class BulkEmailSender:
     通用附件群发邮件的类
     """
 
-    def __init__(self):
+    def __init__(self, dry_run=False, max_retries=3):
         # 邮箱配置
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
@@ -47,17 +61,25 @@ class BulkEmailSender:
         # 发送配置
         self.delay_between_emails = int(os.getenv('DELAY_BETWEEN_EMAILS', '5'))
         self.emails_per_batch = int(os.getenv('EMAILS_PER_BATCH', '10'))
+        self.max_retries = max_retries
+        self.dry_run = dry_run
 
         # 文件配置
         self.excel_file = '发送列表.xlsx'
         self.attachments_folder = 'attachments'
+
+        # 初始化日志
+        self.logger = setup_logger('bulk_email_sender')
 
         # 验证必要配置
         if not self.sender_email or not self.sender_password:
             raise ValueError("请设置 SENDER_EMAIL 和 SENDER_PASSWORD 环境变量")
 
         if self.sender_name == "您的姓名":
-            print("警告：请在 prompts.py 中设置 SENDER_NAME")
+            self.logger.warning("请在 prompts.py 中设置 SENDER_NAME")
+
+        # SMTP连接池
+        self.connection_pool = None
 
     def load_recipients_from_excel(self):
         """
@@ -71,29 +93,41 @@ class BulkEmailSender:
             required_columns = ['姓名', '邮箱', '附件名称']
             for col in required_columns:
                 if col not in df.columns:
-                    print(f"错误：Excel文件缺少'{col}'列")
+                    self.logger.error(f"Excel文件缺少'{col}'列")
                     return []
 
             # 过滤出需要发送的邮件（状态为'待发送'或空）
             recipients = []
+            invalid_emails = []
+
             for index, row in df.iterrows():
                 status = row.get('状态', '待发送')
                 if status == '待发送' or pd.isna(status) or status == '':
+                    email = row.get('邮箱', '').strip()
+
+                    # 验证邮箱格式
+                    if not validate_email(email):
+                        invalid_emails.append((index + 2, email))  # +2因为有表头行
+                        self.logger.warning(f"第{index + 2}行邮箱格式无效: {email}")
+                        continue
+
                     recipients.append({
                         'name': row.get('姓名', ''),
-                        'email': row.get('邮箱', ''),
+                        'email': email,
                         'attachment': row.get('附件名称', ''),
                         'row_index': index
                     })
 
+            if invalid_emails:
+                self.logger.warning(f"发现 {len(invalid_emails)} 个无效邮箱地址，已跳过")
+
             return recipients
 
         except FileNotFoundError:
-            print(f"错误：找不到Excel文件 {self.excel_file}")
-            print("请先创建发送列表Excel文件")
+            self.logger.error(f"找不到Excel文件 {self.excel_file}")
             return []
         except Exception as e:
-            print(f"读取Excel文件时出错：{e}")
+            self.logger.error(f"读取Excel文件时出错：{e}")
             return []
 
     def format_email_content(self, template, recipient_name):
@@ -104,10 +138,15 @@ class BulkEmailSender:
         content = content.replace('{sender_name}', self.sender_name)
         return content
 
+    @retry_on_failure(max_retries=3, delay=2, backoff=2)
     def send_email_with_attachment(self, recipient_name, recipient_email, attachment_filename):
         """
-        发送单封带附件的邮件
+        发送单封带附件的邮件（带重试机制）
         """
+        if self.dry_run:
+            self.logger.info(f"[模拟模式] 将发送给: {recipient_name} <{recipient_email}>")
+            return True
+
         try:
             # 创建邮件对象
             msg = MIMEMultipart()
@@ -160,23 +199,16 @@ class BulkEmailSender:
                         )
                         msg.attach(part)
                 else:
-                    print(f"警告：附件文件不存在 {attachment_path}")
+                    self.logger.error(f"附件文件不存在: {attachment_path}")
                     return False
 
-            # 连接SMTP服务器并发送邮件
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
-            server.starttls()
-            server.login(self.sender_email, self.sender_password)
-
-            text = msg.as_string()
-            server.sendmail(self.sender_email, recipient_email, text)
-            server.quit()
-
+            # 使用连接池发送邮件
+            self.connection_pool.send_email(msg, recipient_email)
             return True
 
         except Exception as e:
-            print(f"发送邮件失败：{e}")
-            return False
+            self.logger.error(f"发送邮件失败 ({recipient_email}): {e}")
+            raise  # 让retry装饰器处理重试
 
     def send_all_emails(self):
         """
@@ -186,61 +218,102 @@ class BulkEmailSender:
         recipients = self.load_recipients_from_excel()
 
         if not recipients:
-            print("没有需要发送的邮件")
+            self.logger.info("没有需要发送的邮件")
             return
 
         total_recipients = len(recipients)
-        print(f"准备发送 {total_recipients} 封邮件")
+        self.logger.info(f"准备发送 {total_recipients} 封邮件")
+
+        # 预检查附件
+        self.logger.info("正在检查附件文件...")
+        missing_attachments = []
+        for recipient in recipients:
+            attachment = recipient.get('attachment', '').strip()
+            if attachment:
+                attachment_path = os.path.join(self.attachments_folder, attachment)
+                if not os.path.exists(attachment_path):
+                    missing_attachments.append((recipient['name'], attachment))
+
+        if missing_attachments:
+            self.logger.warning(f"发现 {len(missing_attachments)} 个缺失的附件:")
+            for name, attachment in missing_attachments[:5]:  # 只显示前5个
+                self.logger.warning(f"  - {name}: {attachment}")
+            if len(missing_attachments) > 5:
+                self.logger.warning(f"  ... 还有 {len(missing_attachments) - 5} 个")
 
         success_count = 0
         fail_count = 0
-
-        # 用于记录实际发送结果，用于后续更新状态
         send_results = []
+        start_time = time.time()
 
-        for index, recipient in enumerate(recipients):
-            print(f"\n[{index + 1}/{total_recipients}] 发送给：{recipient['name']} ({recipient['email']})")
+        # 创建SMTP连接池
+        with SMTPConnectionPool(
+            self.smtp_server, self.smtp_port,
+            self.sender_email, self.sender_password
+        ) as pool:
+            self.connection_pool = pool
 
-            # 发送邮件
-            send_success = self.send_email_with_attachment(
-                recipient['name'],
-                recipient['email'],
-                recipient['attachment']
-            )
+            # 使用进度条（如果可用）
+            iterator = tqdm(recipients, desc="发送邮件", unit="封") if HAS_TQDM else recipients
 
-            if send_success:
-                print(f"✓ 发送成功")
-                success_count += 1
-                send_results.append({'row_index': recipient['row_index'], 'status': '已发送'})
-            else:
-                print(f"✗ 发送失败")
-                fail_count += 1
-                send_results.append({'row_index': recipient['row_index'], 'status': '发送失败'})
+            for index, recipient in enumerate(iterator):
+                if not HAS_TQDM:
+                    elapsed = time.time() - start_time
+                    avg_time = elapsed / (index + 1) if index > 0 else 0
+                    remaining = avg_time * (total_recipients - index - 1)
+                    self.logger.info(
+                        f"[{index + 1}/{total_recipients}] {recipient['name']} ({recipient['email']}) "
+                        f"- 预计剩余: {format_time_remaining(remaining)}"
+                    )
 
-            # 批量发送间隔
-            if (index + 1) % self.emails_per_batch == 0 and index < total_recipients - 1:
-                print(f"批量发送 {self.emails_per_batch} 封邮件完成，等待 {self.delay_between_emails} 秒...")
-                time.sleep(self.delay_between_emails)
-            elif index < total_recipients - 1:
-                # 每封邮件之间的短暂延迟
-                time.sleep(1)
+                # 发送邮件
+                try:
+                    send_success = self.send_email_with_attachment(
+                        recipient['name'],
+                        recipient['email'],
+                        recipient['attachment']
+                    )
+                except Exception:
+                    send_success = False
+
+                if send_success:
+                    success_count += 1
+                    send_results.append({'row_index': recipient['row_index'], 'status': '已发送'})
+                else:
+                    fail_count += 1
+                    send_results.append({'row_index': recipient['row_index'], 'status': '发送失败'})
+
+                # 批量发送间隔
+                if (index + 1) % self.emails_per_batch == 0 and index < total_recipients - 1:
+                    self.logger.info(f"已发送 {index + 1} 封，等待 {self.delay_between_emails} 秒...")
+                    time.sleep(self.delay_between_emails)
+                elif index < total_recipients - 1:
+                    time.sleep(1)
 
         # 发送统计
-        print(f"\n=== 发送完成 ===")
-        print(f"总计：{total_recipients}")
-        print(f"成功：{success_count}")
-        print(f"失败：{fail_count}")
+        elapsed_time = time.time() - start_time
+        self.logger.info(f"\n=== 发送完成 ===")
+        self.logger.info(f"总计：{total_recipients} 封")
+        self.logger.info(f"成功：{success_count} 封")
+        self.logger.info(f"失败：{fail_count} 封")
+        self.logger.info(f"用时：{format_time_remaining(elapsed_time)}")
 
-        # 更新Excel文件状态
-        self.update_excel_status(send_results)
+        if not self.dry_run:
+            # 更新Excel文件状态
+            self.update_excel_status(send_results)
 
     def update_excel_status(self, send_results):
         """
-        更新Excel文件中的发送状态
+        更新Excel文件中的发送状态（带备份）
         """
         try:
             # 读取原始Excel文件
             df = pd.read_excel(self.excel_file)
+
+            # 备份原文件
+            backup_file = f"{os.path.splitext(self.excel_file)[0]}_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            df.to_excel(backup_file, index=False)
+            self.logger.info(f"已备份原文件到: {backup_file}")
 
             # 确保有状态列
             if '状态' not in df.columns:
@@ -252,16 +325,40 @@ class BulkEmailSender:
 
             # 保存回原文件
             df.to_excel(self.excel_file, index=False)
-            print(f"状态已更新到：{self.excel_file}")
+            self.logger.info(f"状态已更新到：{self.excel_file}")
 
         except Exception as e:
-            print(f"更新Excel状态失败：{e}")
+            self.logger.error(f"更新Excel状态失败：{e}")
+            self.logger.error("发送结果未能保存到Excel，请手动更新")
 
 def main():
     """
     主函数
     """
-    # 切换到脚本所在目录，确保相对路径正确
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(
+        description='通用附件群发邮件工具',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+使用示例:
+  %(prog)s                        # 正常发送模式
+  %(prog)s --dry-run              # 模拟发送，不实际发送邮件
+  %(prog)s --test-smtp            # 测试SMTP连接
+  %(prog)s --yes                  # 跳过确认直接发送
+        '''
+    )
+    parser.add_argument('--dry-run', action='store_true',
+                        help='模拟发送模式，不实际发送邮件')
+    parser.add_argument('--test-smtp', action='store_true',
+                        help='测试SMTP连接后退出')
+    parser.add_argument('--yes', '-y', action='store_true',
+                        help='跳过确认，直接开始发送')
+    parser.add_argument('--max-retries', type=int, default=3,
+                        help='每封邮件的最大重试次数 (默认: 3)')
+
+    args = parser.parse_args()
+
+    # 切换到脚本所在目录
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
 
@@ -269,7 +366,30 @@ def main():
     print("功能：从Excel文件读取收件人列表并发送带附件的邮件")
     print()
 
-    # 检查Excel文件是否存在
+    # 加载环境变量
+    env_path = os.path.join(script_dir, '..', '.env')
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=env_path)
+
+    # 测试SMTP连接
+    if args.test_smtp:
+        print("正在测试SMTP连接...")
+        smtp_server = os.getenv('SMTP_SERVER')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        sender_email = os.getenv('SENDER_EMAIL')
+        sender_password = os.getenv('SENDER_PASSWORD')
+
+        if not all([smtp_server, sender_email, sender_password]):
+            print("错误：请先配置 .env 文件")
+            return
+
+        success, message = test_smtp_connection(
+            smtp_server, smtp_port, sender_email, sender_password
+        )
+        print(message)
+        return
+
+    # 检查Excel文件
     excel_file = '发送列表.xlsx'
     if not os.path.exists(excel_file):
         print(f"错误：找不到Excel文件 {excel_file}")
@@ -282,21 +402,28 @@ def main():
         print(f"警告：attachments 文件夹不存在，将创建")
         os.makedirs(attachments_folder)
 
-    # 确认发送
+    # 显示配置信息
     print("准备发送邮件：")
     print(f"Excel文件：{excel_file}")
     print(f"附件文件夹：{attachments_folder}")
     print(f"邮件模板：prompts.py")
+    if args.dry_run:
+        print("模式：模拟发送（不会实际发送邮件）")
     print()
 
-    confirm = input("确认开始发送吗？(y/N): ").strip().lower()
-    if confirm != 'y':
-        print("已取消发送")
-        return
+    # 确认发送
+    if not args.yes and not args.dry_run:
+        confirm = input("确认开始发送吗？(y/N): ").strip().lower()
+        if confirm != 'y':
+            print("已取消发送")
+            return
 
     try:
         # 创建发送器
-        sender = BulkEmailSender()
+        sender = BulkEmailSender(
+            dry_run=args.dry_run,
+            max_retries=args.max_retries
+        )
 
         # 发送所有邮件
         sender.send_all_emails()

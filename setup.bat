@@ -90,13 +90,13 @@ if not exist .vscode\launch.json (
         echo     "version": "0.2.0",
         echo     "configurations": [
         echo         {
-        echo             "name": "通用附件群发",
+        echo             "name": "通用邮件群发",
         echo             "type": "debugpy",
         echo             "request": "launch",
-        echo             "program": "${workspaceFolder}/通用附件群发/send_bulk_emails.py",
+        echo             "program": "${workspaceFolder}/通用邮件群发/send_bulk_emails.py",
         echo             "console": "integratedTerminal",
         echo             "python": "${workspaceFolder}/email_venv/bin/python",
-        echo             "cwd": "${workspaceFolder}/通用附件群发",
+        echo             "cwd": "${workspaceFolder}/通用邮件群发",
         echo             "justMyCode": true,
         echo             "env": {
         echo                 "PYTHONPATH": "${workspaceFolder}"
@@ -172,7 +172,7 @@ echo    - 或按 F5 开始调试
 echo.
 echo 3. 或使用命令行运行：
 echo    email_venv\Scripts\activate.bat
-echo    python 通用附件群发\send_bulk_emails.py
+echo    python 通用邮件群发\send_bulk_emails.py
 echo.
 echo 💡 提示：VSCode 已自动配置好 Python 解释器路径
 echo    无需手动选择虚拟环境，开箱即用！

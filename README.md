@@ -213,16 +213,21 @@ python3 捐赠证书群发/send_certificates.py --max-retries 5
 编辑 `通用邮件群发/prompts.py`：
 
 ```python
-# 发件人姓名
+# 发件人配置
 SENDER_NAME = "您的姓名"
 
-# 邮件标题
-EMAIL_SUBJECT = "您好 {recipient_name}"
+# 邮件标题（可用变量：{var1}, {var2}, {var3}, {sender_name}）
+EMAIL_SUBJECT = "主题示例：关于 {var1} 的通知"
 
-# 邮件正文
-EMAIL_BODY = """尊敬的 {recipient_name}：
+# 邮件正文（可用变量：{var1}, {var2}, {var3}, {sender_name}）
+EMAIL_BODY = """尊敬的收件人：
 
 您好！
+
+这是一封示例邮件。您可以在此处使用以下变量：
+- 第一个变量：{var1}
+- 第二个变量：{var2}
+- 第三个变量：{var3}
 
 [在这里编辑您的邮件内容]
 
@@ -234,7 +239,9 @@ EMAIL_BODY = """尊敬的 {recipient_name}：
 ```
 
 **支持的变量：**
-- `{recipient_name}` - 收件人姓名
+- `{var1}` - 第一个自定义变量（对应 Excel 中的 var1 列）
+- `{var2}` - 第二个自定义变量（对应 Excel 中的 var2 列）
+- `{var3}` - 第三个自定义变量（对应 Excel 中的 var3 列）
 - `{sender_name}` - 发件人姓名
 
 #### 步骤2：准备附件
@@ -245,10 +252,18 @@ EMAIL_BODY = """尊敬的 {recipient_name}：
 
 编辑 `通用邮件群发/发送列表.xlsx`：
 
-| 姓名 | 邮箱 | 附件名称 | 状态 |
-|------|------|----------|------|
-| 张三 | zhang@example.com | 报告.pdf | 待发送 |
-| 李四 | li@example.com | 合同.docx | 待发送 |
+**Excel 列格式：**
+
+| 收件邮箱 | var1 | var2 | var3 | 附件名称1 | 附件名称2 | 发送情况 |
+|---------|------|------|------|----------|----------|---------|
+| zhang@example.com | 张三 | 100元 | 2024-01-20 | report.pdf | | 0 |
+| li@example.com | 李四 | 200元 | 2024-01-21 | contract.docx | invoice.pdf | 0 |
+
+**列说明：**
+- **收件邮箱**：收件人的电子邮箱地址
+- **var1, var2, var3**：自定义变量，对应模板中的 {var1}, {var2}, {var3}
+- **附件名称1, 附件名称2**：附件文件名（可选，留空表示无附件）
+- **发送情况**：发送状态（0 = 未发送，1 = 已发送）
 
 #### 步骤4：运行脚本
 

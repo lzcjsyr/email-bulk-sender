@@ -88,13 +88,13 @@ if [ ! -f ".vscode/launch.json" ]; then
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "通用附件群发",
+            "name": "通用邮件群发",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/通用附件群发/send_bulk_emails.py",
+            "program": "${workspaceFolder}/通用邮件群发/send_bulk_emails.py",
             "console": "integratedTerminal",
             "python": "${workspaceFolder}/email_venv/bin/python",
-            "cwd": "${workspaceFolder}/通用附件群发",
+            "cwd": "${workspaceFolder}/通用邮件群发",
             "justMyCode": true,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
@@ -170,7 +170,7 @@ echo "   - 或按 F5 开始调试"
 echo ""
 echo "3. 或使用命令行运行："
 echo "   source email_venv/bin/activate"
-echo "   python3 通用附件群发/send_bulk_emails.py"
+echo "   python3 通用邮件群发/send_bulk_emails.py"
 echo ""
 echo "💡 提示：VSCode 已自动配置好 Python 解释器路径"
 echo "   无需手动选择虚拟环境，开箱即用！"

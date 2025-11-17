@@ -1,39 +1,31 @@
 # 邮件群发工具
 
-一个简单易用的 Python 邮件批量发送工具，支持附件发送和个性化邮件内容。
+一个简单易用的 Python 邮件批量发送工具，支持附件发送、个性化邮件内容和智能发送管理。
 
 ---
 
 ## 📋 功能特性
 
-本项目提供两个独立的邮件群发功能：
+### 核心功能
+- ✅ 从 Excel 读取收件人列表
+- ✅ 支持自定义邮件模板（标题和正文）
+- ✅ 支持双附件发送
+- ✅ 邮件内容支持 4 个变量替换
+- ✅ 自动记录发送状态到 Excel
 
-### 功能1：捐赠证书邮件群发
-- 从证书文件名自动提取收件人信息
-- 自动发送个性化感谢邮件
-- 证书图片作为附件发送
+### 增强特性
+- ✅ **SMTP连接池**：复用连接，提高发送效率和稳定性
+- ✅ **自动重试机制**：发送失败自动重试最多3次，支持自定义
+- ✅ **详细日志记录**：所有操作记录到logs目录，便于追踪问题
+- ✅ **Excel自动备份**：更新状态前自动备份，防止数据丢失
+- ✅ **发送前验证**：检查邮箱格式、附件存在性，避免无效发送
 
-### 功能2：通用邮件群发
-- 从 Excel 读取收件人列表
-- 支持自定义邮件模板
-- 灵活的附件管理
-- 邮件内容支持变量替换
-
-### 🚀 增强特性（v2.0）
-
-**提高冗余度：**
-- ✅ SMTP连接池：复用连接，提高发送效率和稳定性
-- ✅ 自动重试机制：发送失败自动重试最多3次，支持自定义
-- ✅ 详细日志记录：所有操作记录到logs目录，便于追踪问题
-- ✅ Excel自动备份：更新状态前自动备份，防止数据丢失
-- ✅ 发送前验证：检查邮箱格式、附件存在性，避免无效发送
-
-**提升便捷性：**
-- ✅ 进度条显示：实时查看发送进度和预计剩余时间
-- ✅ 命令行参数：支持 --dry-run、--test-smtp 等便捷操作
-- ✅ 模拟模式：测试邮件配置而不实际发送
-- ✅ SMTP测试：一键测试邮箱连接是否正常
-- ✅ 批量操作：智能批次管理，避免触发邮件服务商限制
+### 便捷特性
+- ✅ **进度条显示**：实时查看发送进度和预计剩余时间
+- ✅ **命令行参数**：支持 --dry-run、--test-smtp 等便捷操作
+- ✅ **模拟模式**：测试邮件配置而不实际发送
+- ✅ **SMTP测试**：一键测试邮箱连接是否正常
+- ✅ **批量操作**：智能批次管理，避免触发邮件服务商限制
 
 ---
 
@@ -52,6 +44,7 @@ cd email-bulk-sender
 
 #### macOS / Linux
 ```bash
+chmod +x setup.sh
 ./setup.sh
 ```
 
@@ -62,15 +55,24 @@ setup.bat
 ```
 
 安装脚本会自动：
-- ✅ 检查 Python 环境
+- ✅ 检查 Python 环境（需要 Python 3.6+）
 - ✅ 创建虚拟环境
 - ✅ 安装所有依赖
 - ✅ 配置 VSCode 开发环境
-- ✅ 生成配置文件模板
+- ✅ 生成配置文件模板（.env）
 
 ### 第三步：配置邮箱信息
 
-编辑 `.env` 文件，填写您的邮箱配置（详见下方"配置邮箱"章节）
+编辑 `.env` 文件，填写您的邮箱配置：
+
+```env
+SMTP_SERVER=smtp.exmail.qq.com    # SMTP 服务器地址
+SMTP_PORT=587                     # SMTP 端口
+SENDER_EMAIL=your@email.com       # 发件人邮箱
+SENDER_PASSWORD=your_auth_code    # 邮箱密码或授权码
+```
+
+详细配置说明见下方"配置邮箱"章节。
 
 ### 第四步：运行脚本
 
@@ -79,14 +81,14 @@ setup.bat
 **运行 `setup.sh` 或 `setup.bat` 后，VSCode 已自动配置完成！**
 
 1. **用 VSCode 打开项目文件夹**
-2. **打开任意 Python 文件**（如 `send_bulk_emails.py`）
+2. **打开 Python 文件**（如 `通用邮件群发/send_bulk_emails.py`）
 3. **点击右上角 ▶️ 运行按钮** 或按 `F5`
 
 ✨ **无需手动选择 Python 解释器，无需激活虚拟环境，开箱即用！**
 
 > setup 脚本已自动配置好：
 > - Python 解释器路径：`email_venv/bin/python`
-> - 调试配置：3 个预设运行配置
+> - 调试配置：预设运行配置
 > - 文件编码：UTF-8（支持中文）
 
 #### 使用命令行（备选）
@@ -98,32 +100,7 @@ email_venv\Scripts\activate.bat         # Windows
 
 # 运行脚本
 python 通用邮件群发/send_bulk_emails.py
-python 捐赠证书群发/send_certificates.py
 ```
-
----
-
-<details>
-<summary><b>手动安装（点击展开）</b></summary>
-
-```bash
-# 1. 创建虚拟环境
-python3 -m venv email_venv
-
-# 2. 激活虚拟环境
-source email_venv/bin/activate          # macOS/Linux
-# 或
-email_venv\Scripts\activate.bat         # Windows
-
-# 3. 安装依赖
-pip install -r requirements.txt
-
-# 4. 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件填写邮箱配置
-```
-
-</details>
 
 ---
 
@@ -166,49 +143,7 @@ SENDER_PASSWORD=your_auth_code    # 邮箱密码或授权码
 
 ## 📖 使用说明
 
-### 功能 1：捐赠证书邮件群发
-
-#### 步骤1：准备证书文件
-
-将证书图片放入 `捐赠证书群发/捐赠证书/` 文件夹
-
-文件名格式：`姓名_邮箱.jpg`（例如：`张三_zhang@example.com.jpg`）
-
-#### 步骤2：解析证书文件名
-
-```bash
-python3 捐赠证书群发/parse_certificates.py
-```
-
-这将生成 `证书信息确认表.xlsx`，请检查并确认信息
-
-#### 步骤3：发送证书
-
-**基本用法：**
-```bash
-python3 捐赠证书群发/send_certificates.py
-```
-
-**高级用法：**
-```bash
-# 测试SMTP连接
-python3 捐赠证书群发/send_certificates.py --test-smtp
-
-# 模拟发送（不实际发送邮件，用于测试）
-python3 捐赠证书群发/send_certificates.py --dry-run
-
-# 跳过确认直接发送
-python3 捐赠证书群发/send_certificates.py --yes
-
-# 自定义重试次数
-python3 捐赠证书群发/send_certificates.py --max-retries 5
-```
-
----
-
-### 功能 2：通用邮件群发
-
-#### 步骤1：配置邮件模板
+### 步骤1：配置邮件模板
 
 编辑 `通用邮件群发/prompts.py`：
 
@@ -244,11 +179,11 @@ EMAIL_BODY = """尊敬的收件人：
 - `{var3}` - 第三个自定义变量（对应 Excel 中的 var3 列）
 - `{sender_name}` - 发件人姓名
 
-#### 步骤2：准备附件
+### 步骤2：准备附件（可选）
 
 将附件文件放入 `通用邮件群发/attachments/` 文件夹
 
-#### 步骤3：填写发送列表
+### 步骤3：填写发送列表
 
 编辑 `通用邮件群发/发送列表.xlsx`：
 
@@ -260,34 +195,34 @@ EMAIL_BODY = """尊敬的收件人：
 | li@example.com | 李四 | 200元 | 2024-01-21 | contract.docx | invoice.pdf | 0 |
 
 **列说明：**
-- **收件邮箱**：收件人的电子邮箱地址
-- **var1, var2, var3**：自定义变量，对应模板中的 {var1}, {var2}, {var3}
+- **收件邮箱**：收件人的电子邮箱地址（必填）
+- **var1, var2, var3**：自定义变量，对应模板中的 {var1}, {var2}, {var3}（可选）
 - **附件名称1, 附件名称2**：附件文件名（可选，留空表示无附件）
-- **发送情况**：发送状态（0 = 未发送，1 = 已发送）
+- **发送情况**：发送状态（0 = 未发送，1 = 已发送，脚本自动更新）
 
-#### 步骤4：运行脚本
+### 步骤4：运行脚本
 
 **基本用法：**
 ```bash
-python3 通用邮件群发/send_bulk_emails.py
+python 通用邮件群发/send_bulk_emails.py
 ```
 
 **高级用法：**
 ```bash
 # 测试SMTP连接
-python3 通用邮件群发/send_bulk_emails.py --test-smtp
+python 通用邮件群发/send_bulk_emails.py --test-smtp
 
 # 模拟发送（不实际发送邮件，用于测试）
-python3 通用邮件群发/send_bulk_emails.py --dry-run
+python 通用邮件群发/send_bulk_emails.py --dry-run
 
 # 跳过确认直接发送
-python3 通用邮件群发/send_bulk_emails.py --yes
+python 通用邮件群发/send_bulk_emails.py --yes
 
 # 自定义重试次数
-python3 通用邮件群发/send_bulk_emails.py --max-retries 5
+python 通用邮件群发/send_bulk_emails.py --max-retries 5
 
 # 查看帮助信息
-python3 通用邮件群发/send_bulk_emails.py --help
+python 通用邮件群发/send_bulk_emails.py --help
 ```
 
 ---
@@ -295,28 +230,21 @@ python3 通用邮件群发/send_bulk_emails.py --help
 ## 📁 项目结构
 
 ```
-邮件群发/
+email-bulk-sender/
 ├── .env                      # 邮箱配置（需自己创建）
 ├── .env.example              # 配置模板
 ├── requirements.txt          # Python 依赖
 ├── setup.sh                  # macOS/Linux 安装脚本
 ├── setup.bat                 # Windows 安装脚本
 ├── README.md                 # 本文档
-├── email_utils.py            # 共享工具模块（连接池、重试、日志等）
-├── email_venv/               # 虚拟环境（运行 setup.sh 后自动创建）
+├── email_venv/               # 虚拟环境（运行 setup 后自动创建）
 ├── logs/                     # 日志文件夹（自动创建）
 │
-├── 通用邮件群发/
-│   ├── send_bulk_emails.py   # 群发脚本（已增强）
-│   ├── prompts.py            # 邮件模板
-│   ├── 发送列表.xlsx         # 收件人列表
-│   └── attachments/          # 附件文件夹
-│
-└── 捐赠证书群发/
-    ├── parse_certificates.py  # 解析证书文件名
-    ├── send_certificates.py   # 发送证书邮件（已增强）
-    ├── 捐赠证书/              # 证书文件夹
-    └── 证书信息确认表.xlsx    # 自动生成的确认表
+└── 通用邮件群发/
+    ├── send_bulk_emails.py   # 群发脚本
+    ├── prompts.py            # 邮件模板配置
+    ├── 发送列表.xlsx         # 收件人列表
+    └── attachments/          # 附件文件夹
 ```
 
 ---
@@ -359,8 +287,9 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### 6. 附件找不到
 
-- **功能1**：检查证书文件是否在 `捐赠证书群发/捐赠证书/` 文件夹中
-- **功能2**：检查附件是否在 `通用邮件群发/attachments/` 文件夹中，且文件名与Excel中完全一致
+- 检查附件是否在 `通用邮件群发/attachments/` 文件夹中
+- 确保文件名与 Excel 中完全一致（包括扩展名）
+- 检查文件路径中是否有特殊字符
 
 ### 7. 中文文件名乱码
 
@@ -383,6 +312,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 1. **测试先行**
    - 先用少量数据测试
+   - 使用 `--dry-run` 模式测试邮件内容
    - 确认邮件内容和附件正确后再批量发送
 
 2. **控制发送速度**
@@ -395,10 +325,12 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 3. **附件大小限制**
    - 不同邮箱服务商对附件大小限制不同（一般 10-25MB）
-   - 建议附件文件大小不超过 5MB
+   - 建议单个附件文件大小不超过 5MB
+   - 建议总附件大小不超过 10MB
 
 4. **备份数据**
    - 建议备份原始文件和 Excel 文件
+   - 脚本会自动备份 Excel（带时间戳）
    - 保留发送记录便于后续查询
 
 ---
@@ -420,42 +352,14 @@ EMAILS_PER_BATCH=10       # 每批发送数量
 SMTP_PORT=465  # 使用 SSL/TLS
 ```
 
-对应代码需要修改：
+对应代码需要修改 `send_bulk_emails.py`：
 ```python
 server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 ```
 
 ---
 
-## 📞 技术支持
-
-### 系统要求
-
-- **Python**: 3.6 或更高版本
-- **操作系统**: Windows / macOS / Linux
-- **网络**: 能够访问 SMTP 邮件服务器
-
-### 依赖库
-
-- pandas >= 1.3.0
-- openpyxl >= 3.0.0
-- python-dotenv >= 0.19.0
-
-### 故障排查
-
-如果遇到问题：
-1. 检查本文档的"常见问题"部分
-2. 查看脚本输出的错误信息
-3. 确认 `.env` 配置正确
-4. 测试邮箱 SMTP 连接是否正常
-
----
-
-## 📖 新功能详细说明
-
-### 命令行参数
-
-所有脚本现在支持以下命令行参数：
+## 📖 命令行参数说明
 
 | 参数 | 说明 |
 |------|------|
@@ -464,6 +368,10 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 | `--yes`, `-y` | 跳过确认提示，直接开始发送 |
 | `--max-retries N` | 设置发送失败后的最大重试次数（默认3次） |
 | `--help`, `-h` | 显示帮助信息 |
+
+---
+
+## 📋 功能详解
 
 ### 日志系统
 
@@ -518,6 +426,32 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 
 ---
 
+## 📞 技术支持
+
+### 系统要求
+
+- **Python**: 3.6 或更高版本
+- **操作系统**: Windows / macOS / Linux
+- **网络**: 能够访问 SMTP 邮件服务器
+
+### 依赖库
+
+- pandas >= 1.3.0
+- openpyxl >= 3.0.0
+- python-dotenv >= 0.19.0
+- tqdm >= 4.62.0（可选，用于进度条显示）
+
+### 故障排查
+
+如果遇到问题：
+1. 检查本文档的"常见问题"部分
+2. 查看脚本输出的错误信息
+3. 查看 `logs/` 目录中的日志文件
+4. 确认 `.env` 配置正确
+5. 使用 `--test-smtp` 测试邮箱连接是否正常
+
+---
+
 ## 📄 许可证
 
 本项目仅供学习和内部使用，请遵守相关法律法规和邮箱服务商的使用条款。
@@ -526,6 +460,7 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 - 不要用于垃圾邮件发送
 - 遵守邮箱服务商的发送频率限制
 - 确保收件人同意接收邮件
+- 尊重收件人的隐私权
 
 ---
 
@@ -554,4 +489,6 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 ### v1.0 (2025-01-10)
 - 初始版本发布
 - 支持通用邮件群发
-- 支持捐赠证书群发
+- 支持 Excel 数据导入
+- 支持附件发送
+- 支持邮件模板变量替换

@@ -13,7 +13,7 @@
 - 自动发送个性化感谢邮件
 - 证书图片作为附件发送
 
-### 功能2：通用附件群发
+### 功能2：通用邮件群发
 - 从 Excel 读取收件人列表
 - 支持自定义邮件模板
 - 灵活的附件管理
@@ -97,7 +97,7 @@ source email_venv/bin/activate          # macOS/Linux
 email_venv\Scripts\activate.bat         # Windows
 
 # 运行脚本
-python 通用附件群发/send_bulk_emails.py
+python 通用邮件群发/send_bulk_emails.py
 python 捐赠证书群发/send_certificates.py
 ```
 
@@ -206,11 +206,11 @@ python3 捐赠证书群发/send_certificates.py --max-retries 5
 
 ---
 
-### 功能 2：通用附件群发
+### 功能 2：通用邮件群发
 
 #### 步骤1：配置邮件模板
 
-编辑 `通用附件群发/prompts.py`：
+编辑 `通用邮件群发/prompts.py`：
 
 ```python
 # 发件人姓名
@@ -239,11 +239,11 @@ EMAIL_BODY = """尊敬的 {recipient_name}：
 
 #### 步骤2：准备附件
 
-将附件文件放入 `通用附件群发/attachments/` 文件夹
+将附件文件放入 `通用邮件群发/attachments/` 文件夹
 
 #### 步骤3：填写发送列表
 
-编辑 `通用附件群发/发送列表.xlsx`：
+编辑 `通用邮件群发/发送列表.xlsx`：
 
 | 姓名 | 邮箱 | 附件名称 | 状态 |
 |------|------|----------|------|
@@ -254,25 +254,25 @@ EMAIL_BODY = """尊敬的 {recipient_name}：
 
 **基本用法：**
 ```bash
-python3 通用附件群发/send_bulk_emails.py
+python3 通用邮件群发/send_bulk_emails.py
 ```
 
 **高级用法：**
 ```bash
 # 测试SMTP连接
-python3 通用附件群发/send_bulk_emails.py --test-smtp
+python3 通用邮件群发/send_bulk_emails.py --test-smtp
 
 # 模拟发送（不实际发送邮件，用于测试）
-python3 通用附件群发/send_bulk_emails.py --dry-run
+python3 通用邮件群发/send_bulk_emails.py --dry-run
 
 # 跳过确认直接发送
-python3 通用附件群发/send_bulk_emails.py --yes
+python3 通用邮件群发/send_bulk_emails.py --yes
 
 # 自定义重试次数
-python3 通用附件群发/send_bulk_emails.py --max-retries 5
+python3 通用邮件群发/send_bulk_emails.py --max-retries 5
 
 # 查看帮助信息
-python3 通用附件群发/send_bulk_emails.py --help
+python3 通用邮件群发/send_bulk_emails.py --help
 ```
 
 ---
@@ -291,7 +291,7 @@ python3 通用附件群发/send_bulk_emails.py --help
 ├── email_venv/               # 虚拟环境（运行 setup.sh 后自动创建）
 ├── logs/                     # 日志文件夹（自动创建）
 │
-├── 通用附件群发/
+├── 通用邮件群发/
 │   ├── send_bulk_emails.py   # 群发脚本（已增强）
 │   ├── prompts.py            # 邮件模板
 │   ├── 发送列表.xlsx         # 收件人列表
@@ -345,7 +345,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### 6. 附件找不到
 
 - **功能1**：检查证书文件是否在 `捐赠证书群发/捐赠证书/` 文件夹中
-- **功能2**：检查附件是否在 `通用附件群发/attachments/` 文件夹中，且文件名与Excel中完全一致
+- **功能2**：检查附件是否在 `通用邮件群发/attachments/` 文件夹中，且文件名与Excel中完全一致
 
 ### 7. 中文文件名乱码
 
@@ -538,5 +538,5 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 
 ### v1.0 (2025-01-10)
 - 初始版本发布
-- 支持通用附件群发
+- 支持通用邮件群发
 - 支持捐赠证书群发

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-通用附件群发邮件工具
+通用邮件群发工具
 从Excel文件读取收件人列表，发送带附件的邮件
 支持3个自定义变量、双附件、自动重试、详细日志等功能
 """
@@ -65,7 +65,7 @@ class EmailValidator:
 
 class BulkEmailSender:
     """
-    通用附件群发邮件的类
+    通用邮件群发工具类
     支持：
     - 3个自定义变量（var1, var2, var3）
     - 双附件支持
@@ -511,7 +511,7 @@ def main():
     os.chdir(script_dir)
 
     print("=" * 50)
-    print("通用附件群发邮件工具")
+    print("通用邮件群发工具")
     print("=" * 50)
     print("功能：")
     print("  - 支持3个自定义变量（var1, var2, var3）")

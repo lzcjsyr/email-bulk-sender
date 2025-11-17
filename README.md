@@ -13,19 +13,30 @@
 - ✅ 邮件内容支持 4 个变量替换
 - ✅ 自动记录发送状态到 Excel
 
-### 增强特性
+### 🔒 邮件安全与送达率增强（NEW!）
+- ✅ **DKIM数字签名**：为邮件添加DKIM签名，大幅提高Gmail等邮箱的送达率
+- ✅ **SPF/DMARC验证**：发送前自动检查DNS配置，确保邮件身份验证
+- ✅ **HTML邮件支持**：同时发送纯文本和HTML格式，提高显示效果和送达率
+- ✅ **关键邮件头部**：自动添加List-Unsubscribe、Reply-To等合规头部
+- ✅ **内容安全检查**：自动检测垃圾邮件关键词和可疑URL，降低被拒风险
+- ✅ **IP信誉检查**：发送前检查发送IP是否在黑名单中
+- ✅ **退订机制**：符合CAN-SPAM等法规要求的一键退订功能
+
+### 🚀 智能发送与容错
 - ✅ **SMTP连接池**：复用连接，提高发送效率和稳定性
-- ✅ **自动重试机制**：发送失败自动重试最多3次，支持自定义
+- ✅ **指数退避重试**：真正的指数退避算法，智能处理临时性错误
+- ✅ **错误分类处理**：区分永久性/临时性错误，避免无效重试
+- ✅ **反弹检测**：自动识别硬反弹(邮箱不存在)和软反弹(临时故障)
+- ✅ **速率限制检测**：自动识别并应对邮件服务商的速率限制
 - ✅ **详细日志记录**：所有操作记录到logs目录，便于追踪问题
 - ✅ **Excel自动备份**：更新状态前自动备份，防止数据丢失
 - ✅ **发送前验证**：检查邮箱格式、附件存在性，避免无效发送
 
 ### 便捷特性
 - ✅ **进度条显示**：实时查看发送进度和预计剩余时间
-- ✅ **命令行参数**：支持 --dry-run、--test-smtp 等便捷操作
-- ✅ **模拟模式**：测试邮件配置而不实际发送
-- ✅ **SMTP测试**：一键测试邮箱连接是否正常
+- ✅ **模拟模式**：测试邮件配置而不实际发送(DRY_RUN=true)
 - ✅ **批量操作**：智能批次管理，避免触发邮件服务商限制
+- ✅ **CSS内联**：自动将HTML邮件的CSS内联，提高兼容性
 
 ---
 
@@ -66,10 +77,18 @@ setup.bat
 编辑 `.env` 文件，填写您的邮箱配置：
 
 ```env
+# 基础配置（必需）
 SMTP_SERVER=smtp.exmail.qq.com    # SMTP 服务器地址
 SMTP_PORT=587                     # SMTP 端口
 SENDER_EMAIL=your@email.com       # 发件人邮箱
 SENDER_PASSWORD=your_auth_code    # 邮箱密码或授权码
+
+# 增强功能（可选，但强烈建议配置以提高Gmail送达率）
+ENABLE_HTML_EMAIL=true            # 启用HTML邮件
+ENABLE_PRE_SEND_CHECKS=true       # 启用发送前安全检查
+# DKIM_DOMAIN=example.com         # DKIM域名（需配置DNS）
+# DKIM_SELECTOR=default           # DKIM选择器
+# DKIM_PRIVATE_KEY_PATH=dkim_private.key  # DKIM私钥路径
 ```
 
 详细配置说明见下方"配置邮箱"章节。
@@ -237,13 +256,20 @@ email-bulk-sender/
 ├── setup.sh                  # macOS/Linux 安装脚本
 ├── setup.bat                 # Windows 安装脚本
 ├── README.md                 # 本文档
+│
+├── email_security.py         # 【NEW】邮件安全模块(DKIM/SPF/内容检查)
+├── email_enhanced.py         # 【NEW】增强发送模块(智能重试/错误分类)
+│
 ├── email_venv/               # 虚拟环境（运行 setup 后自动创建）
 ├── logs/                     # 日志文件夹（自动创建）
+├── dkim_private.key          # DKIM私钥（可选，需自己生成）
+├── dkim_public.key           # DKIM公钥（可选，需自己生成）
 │
 └── 通用邮件群发/
-    ├── send_bulk_emails.py   # 群发脚本
-    ├── template.py           # 邮件模板配置
+    ├── send_bulk_emails.py   # 群发脚本（已集成增强功能）
+    ├── template.py           # 邮件模板配置（支持HTML）
     ├── 发送列表.xlsx         # 收件人列表
+    ├── email_sender.log      # 发送日志（自动生成）
     └── attachments/          # 附件文件夹
 ```
 
@@ -464,27 +490,240 @@ server = smtplib.SMTP_SSL(self.smtp_server, self.smtp_port)  # 465端口
 
 ---
 
+## 🎯 提高Gmail等邮箱送达率配置指南
+
+针对Gmail、Outlook等严格的邮件服务商，本工具提供了完整的送达率优化方案。
+
+### 为什么邮件会进垃圾箱?
+
+Gmail等邮箱会检查以下几点:
+1. **身份验证**: 是否配置了SPF、DKIM、DMARC
+2. **发送者信誉**: IP地址是否被拉黑
+3. **邮件内容**: 是否包含垃圾邮件特征
+4. **邮件格式**: 是否符合标准(HTML+纯文本)
+5. **合规性**: 是否提供退订链接
+
+### 完整配置步骤
+
+#### 步骤1: 配置SPF记录（必需）
+
+在您的域名DNS管理中添加TXT记录:
+
+```
+记录类型: TXT
+主机记录: @
+记录值: v=spf1 include:_spf.google.com ~all
+```
+
+如果使用其他邮件服务商,参考:
+- **腾讯企业邮**: `v=spf1 include:spf.mail.qq.com ~all`
+- **阿里企业邮**: `v=spf1 include:spf.mxhichina.com ~all`
+- **自建服务器**: `v=spf1 ip4:your-server-ip ~all`
+
+验证SPF: 运行脚本时会自动检查
+
+#### 步骤2: 配置DKIM签名（强烈推荐）
+
+**1) 生成DKIM密钥对:**
+
+```bash
+# 生成私钥
+openssl genrsa -out dkim_private.key 2048
+
+# 提取公钥
+openssl rsa -in dkim_private.key -pubout -out dkim_public.key
+
+# 获取公钥内容(用于DNS配置)
+cat dkim_public.key
+```
+
+**2) 配置DNS记录:**
+
+```
+记录类型: TXT
+主机记录: default._domainkey
+记录值: v=DKIM1; k=rsa; p=<公钥内容>
+```
+
+公钥内容格式: 去除`-----BEGIN PUBLIC KEY-----`和`-----END PUBLIC KEY-----`以及换行符
+
+**3) 配置.env文件:**
+
+```env
+DKIM_DOMAIN=example.com
+DKIM_SELECTOR=default
+DKIM_PRIVATE_KEY_PATH=dkim_private.key
+```
+
+**4) 验证DKIM:**
+
+运行脚本时会自动检查DNS配置是否正确
+
+#### 步骤3: 配置DMARC策略（推荐）
+
+在域名DNS中添加:
+
+```
+记录类型: TXT
+主机记录: _dmarc
+记录值: v=DMARC1; p=none; rua=mailto:dmarc@example.com
+```
+
+DMARC策略说明:
+- `p=none`: 监控模式(推荐新手)
+- `p=quarantine`: 隔离可疑邮件
+- `p=reject`: 拒绝未通过验证的邮件
+
+#### 步骤4: 启用HTML邮件
+
+在`.env`中配置:
+
+```env
+ENABLE_HTML_EMAIL=true
+```
+
+在`template.py`中编辑`EMAIL_BODY_HTML`,同时保留`EMAIL_BODY`纯文本版本
+
+#### 步骤5: 启用发送前检查
+
+在`.env`中配置:
+
+```env
+ENABLE_PRE_SEND_CHECKS=true
+```
+
+脚本会在发送前自动检查:
+- ✓ SPF记录是否存在
+- ✓ DMARC策略是否配置
+- ✓ 发送IP是否在黑名单
+- ✓ 邮件内容是否有垃圾特征
+- ✓ 是否包含可疑URL
+
+### 配置验证清单
+
+运行脚本前,确认以下各项:
+
+- [ ] SPF记录已添加到DNS
+- [ ] DKIM密钥已生成并配置到DNS
+- [ ] DMARC策略已配置(可选,但推荐)
+- [ ] .env中DKIM相关配置已填写
+- [ ] ENABLE_HTML_EMAIL=true
+- [ ] ENABLE_PRE_SEND_CHECKS=true
+- [ ] template.py中已配置EMAIL_BODY_HTML
+- [ ] 邮件内容不含垃圾关键词
+
+### DNS配置示例(完整)
+
+```
+# SPF记录
+@ TXT "v=spf1 include:_spf.google.com ~all"
+
+# DKIM记录
+default._domainkey TXT "v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC..."
+
+# DMARC记录
+_dmarc TXT "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
+```
+
+### 测试送达率
+
+配置完成后:
+
+1. **测试DNS配置:**
+   ```bash
+   # 检查SPF
+   dig txt example.com
+
+   # 检查DKIM
+   dig txt default._domainkey.example.com
+
+   # 检查DMARC
+   dig txt _dmarc.example.com
+   ```
+
+2. **发送测试邮件:**
+   ```bash
+   # 先用DRY RUN模式测试
+   python 通用邮件群发/send_bulk_emails.py
+   # 会显示所有检查结果
+
+   # 发送给自己的Gmail测试
+   # 在Excel中只添加一条记录(你的Gmail地址)
+   ```
+
+3. **检查Gmail原始邮件头:**
+   - 打开收到的邮件
+   - 点击"更多" → "显示原始邮件"
+   - 查找以下内容:
+     - `Authentication-Results`: 应显示`spf=pass`, `dkim=pass`
+     - `Received-SPF`: 应显示`pass`
+
+### 常见问题
+
+**Q: 配置后还是进垃圾箱?**
+
+A: 检查以下几点:
+1. DNS记录是否生效(可能需要等待几小时)
+2. 邮件内容是否包含垃圾关键词
+3. 发送IP是否被拉黑(运行脚本时会检查)
+4. 是否发送过快(调低EMAILS_PER_BATCH)
+5. 域名是否有良好的发送历史
+
+**Q: 没有域名怎么办?**
+
+A: 如果使用企业邮箱(如腾讯企业邮、Gmail企业版):
+- SPF/DMARC由邮箱服务商管理
+- 启用HTML邮件和内容检查仍然有效
+- 送达率会比个人邮箱好
+
+**Q: DKIM配置太复杂?**
+
+A: DKIM虽然配置复杂,但对Gmail送达率提升最明显。建议:
+- 先配置SPF(简单)
+- 再配置HTML邮件(简单)
+- 最后配置DKIM(有技术能力时)
+
+---
+
 ## 🔄 更新日志
+
+### v3.0 (2025-01-17) - 送达率增强版
+
+**🔒 邮件安全与送达率:**
+- ✅ 新增DKIM数字签名支持
+- ✅ 新增SPF/DMARC自动验证
+- ✅ 新增HTML邮件支持(multipart/alternative)
+- ✅ 新增List-Unsubscribe等关键邮件头
+- ✅ 新增垃圾邮件内容检查
+- ✅ 新增IP黑名单检查
+- ✅ 新增退订机制
+
+**🚀 智能重试与容错:**
+- ✅ 实现真正的指数退避重试(之前仅为固定延迟)
+- ✅ 新增错误分类系统(永久性/临时性/速率限制)
+- ✅ 新增SMTP反弹检测(硬反弹/软反弹)
+- ✅ 智能识别邮箱不存在、速率限制等错误
+- ✅ 根据错误类型自动调整重试策略
+
+**📦 新增模块:**
+- `email_security.py` - 安全检查模块
+- `email_enhanced.py` - 增强发送模块
 
 ### v2.0 (2025-01-12)
 
-**冗余度提升：**
+**冗余度提升:**
 - 新增 SMTP 连接池，提高发送效率和稳定性
 - 新增自动重试机制，支持自定义重试次数
 - 新增详细日志记录系统
 - 新增 Excel 自动备份功能
 - 新增发送前邮箱格式和附件存在性验证
 
-**便捷性提升：**
+**便捷性提升:**
 - 新增命令行参数支持
 - 新增 `--dry-run` 模拟发送模式
 - 新增 `--test-smtp` SMTP连接测试
 - 新增进度条显示（需要 tqdm 库）
 - 新增预计剩余时间显示
-
-**Bug修复：**
-- 优化错误处理和异常捕获
-- 改进中文文件名编码处理
 
 ### v1.0 (2025-01-10)
 - 初始版本发布

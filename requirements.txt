@@ -6,6 +6,14 @@ python-dotenv>=0.19.0
 # 进度显示和日志
 tqdm>=4.62.0           # 进度条显示
 
+# 邮件安全和身份验证
+dkimpy>=1.0.5          # DKIM签名支持
+dnspython>=2.3.0       # DNS查询(SPF/DMARC验证)
+
+# HTML邮件支持
+premailer>=3.10.0      # CSS内联,提高邮件兼容性
+html2text>=2020.1.16   # HTML转纯文本备用
+
 # 可选依赖（用于增强功能）
 # beautifulsoup4>=4.9.3  # 用于处理HTML内容
 # jinja2>=3.0.0          # 用于模板渲染

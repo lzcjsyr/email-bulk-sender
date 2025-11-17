@@ -13,6 +13,7 @@ import pandas as pd
 import logging
 import re
 import mimetypes
+import sys
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -22,10 +23,26 @@ from email.utils import make_msgid, formatdate
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
-import sys
+from typing import Optional
 
 # 导入邮件模板配置
 from template import SENDER_NAME, EMAIL_SUBJECT, EMAIL_BODY
+try:
+    from template import EMAIL_BODY_HTML
+except ImportError:
+    EMAIL_BODY_HTML = None
+
+# 导入增强功能模块
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from email_security import DKIMSigner, run_pre_send_checks
+    from email_enhanced import (EnhancedEmailBuilder, SmartRetryHandler,
+                                 BounceHandler, add_unsubscribe_footer)
+    ENHANCED_FEATURES_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"增强功能模块未找到或导入失败: {e}")
+    logging.warning("将使用基础功能。请确保email_security.py和email_enhanced.py在项目根目录")
+    ENHANCED_FEATURES_AVAILABLE = False
 
 # 加载环境变量（从上级目录读取.env文件）
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -89,6 +106,7 @@ class BulkEmailSender:
         # 邮件模板（从template.py导入）
         self.email_subject_template = EMAIL_SUBJECT
         self.email_body_template = EMAIL_BODY
+        self.email_body_html_template = EMAIL_BODY_HTML
 
         # 发送配置
         self.delay_between_emails = int(os.getenv('DELAY_BETWEEN_EMAILS', '5'))
@@ -96,7 +114,7 @@ class BulkEmailSender:
 
         # 可靠性配置（硬编码，不需要用户配置）
         self.max_retry_attempts = 3  # 失败重试次数
-        self.retry_delay = 10  # 重试间隔时间（秒）
+        self.retry_delay = 10  # 重试间隔时间（秒）- 现在使用指数退避
 
         # Dry-run模式（测试模式，不实际发送邮件）
         self.dry_run = os.getenv('DRY_RUN', 'false').lower() == 'true'
@@ -109,6 +127,67 @@ class BulkEmailSender:
         self.smtp_connection = None
         self.connection_email_count = 0
         self.max_emails_per_connection = 50  # 每个连接最多发送50封邮件
+
+        # ===== 新增：增强功能配置 =====
+        # HTML邮件
+        self.enable_html = os.getenv('ENABLE_HTML_EMAIL', 'true').lower() == 'true'
+
+        # 发送前安全检查
+        self.enable_pre_send_checks = os.getenv('ENABLE_PRE_SEND_CHECKS', 'true').lower() == 'true'
+
+        # DKIM签名配置
+        self.dkim_domain = os.getenv('DKIM_DOMAIN', '')
+        self.dkim_selector = os.getenv('DKIM_SELECTOR', 'default')
+        self.dkim_private_key_path = os.getenv('DKIM_PRIVATE_KEY_PATH', '')
+
+        # 其他邮件头部配置
+        self.reply_to = os.getenv('REPLY_TO_EMAIL', self.sender_email)
+        self.unsubscribe_email = os.getenv('UNSUBSCRIBE_EMAIL', self.sender_email)
+
+        # 初始化增强功能组件
+        self.dkim_signer: Optional[DKIMSigner] = None
+        self.email_builder: Optional[EnhancedEmailBuilder] = None
+        self.retry_handler: Optional[SmartRetryHandler] = None
+        self.bounce_handler: Optional[BounceHandler] = None
+
+        if ENHANCED_FEATURES_AVAILABLE:
+            # DKIM签名器
+            if self.dkim_domain and self.dkim_private_key_path:
+                # 转换为绝对路径
+                if not os.path.isabs(self.dkim_private_key_path):
+                    self.dkim_private_key_path = os.path.join(
+                        os.path.dirname(script_dir),
+                        self.dkim_private_key_path
+                    )
+                self.dkim_signer = DKIMSigner(
+                    domain=self.dkim_domain,
+                    selector=self.dkim_selector,
+                    private_key_path=self.dkim_private_key_path
+                )
+                logger.info(f"DKIM签名已启用: {self.dkim_domain}")
+            else:
+                logger.warning("DKIM未配置,建议配置以提高Gmail等邮箱的送达率")
+
+            # 邮件构建器
+            self.email_builder = EnhancedEmailBuilder(
+                sender_email=self.sender_email,
+                sender_name=self.sender_name,
+                reply_to=self.reply_to,
+                unsubscribe_email=self.unsubscribe_email
+            )
+
+            # 智能重试处理器
+            self.retry_handler = SmartRetryHandler(
+                max_attempts=self.max_retry_attempts,
+                base_delay=self.retry_delay
+            )
+
+            # 反弹处理器
+            self.bounce_handler = BounceHandler()
+
+            logger.info("增强功能已启用: HTML邮件, 智能重试, DKIM签名, 内容检查")
+        else:
+            logger.warning("增强功能不可用,将使用基础发送功能")
 
         # 验证必要配置
         if not self.sender_email or not self.sender_password:
@@ -334,6 +413,7 @@ class BulkEmailSender:
                                     attachment1, attachment2, retry_count=0):
         """
         发送单封带附件的邮件（支持双附件）
+        使用增强功能: HTML邮件、DKIM签名、智能重试等
         """
         try:
             # Dry-run模式：不实际发送
@@ -344,25 +424,43 @@ class BulkEmailSender:
                 time.sleep(0.1)  # 模拟发送延迟
                 return True
 
-            # 创建邮件对象
-            msg = MIMEMultipart()
-            msg['From'] = self.sender_email if self.sender_email else ''
-            msg['To'] = recipient_email
-
-            # 替换邮件标题中的变量
+            # 替换邮件标题和正文中的变量
             subject = self.format_email_content(self.email_subject_template, var1, var2, var3)
-            msg['Subject'] = subject
+            body_plain = self.format_email_content(self.email_body_template, var1, var2, var3)
 
-            # 添加必要的邮件头信息
-            msg['Message-ID'] = make_msgid()
-            msg['Date'] = formatdate(localtime=True)
-            msg['MIME-Version'] = '1.0'
+            # 处理HTML正文
+            body_html = None
+            if self.enable_html and self.email_body_html_template and ENHANCED_FEATURES_AVAILABLE:
+                body_html = self.format_email_content(self.email_body_html_template, var1, var2, var3)
+                # 添加退订信息到正文
+                if self.unsubscribe_email:
+                    from email_enhanced import add_unsubscribe_footer
+                    body_plain = add_unsubscribe_footer(body_plain, self.unsubscribe_email, 'plain')
+                    body_html = add_unsubscribe_footer(body_html, self.unsubscribe_email, 'html')
 
-            # 替换邮件正文中的变量
-            body = self.format_email_content(self.email_body_template, var1, var2, var3)
+            # 使用增强邮件构建器或传统方式
+            if ENHANCED_FEATURES_AVAILABLE and self.email_builder:
+                # 使用增强功能构建邮件
+                msg = self.email_builder.build_message(
+                    recipient_email=recipient_email,
+                    subject=subject,
+                    body_plain=body_plain,
+                    body_html=body_html
+                )
+            else:
+                # 传统方式构建邮件
+                msg = MIMEMultipart('alternative' if body_html else 'mixed')
+                msg['From'] = self.sender_email if self.sender_email else ''
+                msg['To'] = recipient_email
+                msg['Subject'] = subject
+                msg['Message-ID'] = make_msgid()
+                msg['Date'] = formatdate(localtime=True)
+                msg['MIME-Version'] = '1.0'
 
-            # 添加邮件正文
-            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+                # 添加纯文本和HTML正文
+                msg.attach(MIMEText(body_plain, 'plain', 'utf-8'))
+                if body_html:
+                    msg.attach(MIMEText(body_html, 'html', 'utf-8'))
 
             # 添加附件1
             att1_success = self.attach_file(msg, attachment1)
@@ -374,34 +472,81 @@ class BulkEmailSender:
             if (attachment1 or attachment2) and not (att1_success or att2_success):
                 logger.warning(f"所有附件都加载失败，将发送无附件邮件")
 
-            # 获取SMTP连接并发送邮件
+            # 获取SMTP连接
             server = self.get_or_create_smtp_connection()
-            text = msg.as_string()
-            # 确保发件人邮箱已配置
+
+            # 转换邮件为字节串
+            message_bytes = msg.as_string().encode('utf-8')
+
+            # DKIM签名(如果已配置)
+            if self.dkim_signer and ENHANCED_FEATURES_AVAILABLE:
+                message_bytes = self.dkim_signer.sign_message(message_bytes)
+
+            # 发送邮件
             sender = self.sender_email if self.sender_email else ''
-            server.sendmail(sender, recipient_email, text)
+            server.sendmail(sender, recipient_email, message_bytes.decode('utf-8'))
             self.connection_email_count += 1
 
             logger.info(f"✓ 发送成功：{recipient_email}")
             return True
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"发送邮件失败（尝试 {retry_count + 1}/{self.max_retry_attempts}）：{e}")
 
-            # 如果是连接错误，关闭连接以便下次重新建立
-            if isinstance(e, (smtplib.SMTPException, ConnectionError, TimeoutError)):
-                self.close_smtp_connection()
+            # 使用智能重试处理器
+            if ENHANCED_FEATURES_AVAILABLE and self.retry_handler:
+                should_retry, delay, error_type = self.retry_handler.should_retry(e, retry_count)
 
-            # 自动重试
-            if retry_count < self.max_retry_attempts - 1:
+                # 记录错误类型
+                logger.warning(f"错误类型: {error_type}")
+
+                # 解析反弹信息
+                if self.bounce_handler and isinstance(e, smtplib.SMTPResponseException):
+                    bounce_info = self.bounce_handler.parse_smtp_response(e)
+                    if bounce_info and bounce_info['is_bounce']:
+                        logger.warning(
+                            f"检测到{bounce_info['bounce_type']}反弹: "
+                            f"{bounce_info.get('reason', '未知原因')}"
+                        )
+                        # 硬反弹不应该重试
+                        if bounce_info['bounce_type'] == 'hard':
+                            should_retry = False
+
+                if not should_retry:
+                    logger.error(f"不可恢复的错误,停止重试: {error_type}")
+                    return False
+
+                # 关闭连接(如果是连接错误)
+                if 'connection' in error_type.lower() or 'authentication' in error_type.lower():
+                    self.close_smtp_connection()
+
+                # 等待后重试
+                logger.info(f"等待 {delay:.1f} 秒后重试...")
+                time.sleep(delay)
+
+            else:
+                # 传统重试逻辑
+                if isinstance(e, (smtplib.SMTPException, ConnectionError, TimeoutError)):
+                    self.close_smtp_connection()
+
+                if retry_count >= self.max_retry_attempts - 1:
+                    return False
+
                 logger.info(f"等待 {self.retry_delay} 秒后重试...")
                 time.sleep(self.retry_delay)
-                return self.send_email_with_attachments(
-                    recipient_email, var1, var2, var3,
-                    attachment1, attachment2, retry_count + 1
-                )
 
-            return False
+            # 递归重试
+            return self.send_email_with_attachments(
+                recipient_email, var1, var2, var3,
+                attachment1, attachment2, retry_count + 1
+            )
+
+        except KeyboardInterrupt:
+            logger.warning("用户中断发送")
+            raise
+
+        return False
 
     def send_all_emails(self):
         """
@@ -419,8 +564,57 @@ class BulkEmailSender:
             logger.error("验证失败，取消发送")
             return
 
+        # ===== 新增：发送前安全检查 =====
+        if self.enable_pre_send_checks and ENHANCED_FEATURES_AVAILABLE and not self.dry_run:
+            logger.info("\n开始发送前安全检查...")
+
+            # 使用第一封邮件的内容进行检查
+            first_recipient = recipients[0]
+            test_subject = self.format_email_content(
+                self.email_subject_template,
+                first_recipient['var1'],
+                first_recipient['var2'],
+                first_recipient['var3']
+            )
+            test_body = self.format_email_content(
+                self.email_body_template,
+                first_recipient['var1'],
+                first_recipient['var2'],
+                first_recipient['var3']
+            )
+
+            # 运行安全检查
+            check_results = run_pre_send_checks(
+                sender_email=self.sender_email,
+                subject=test_subject,
+                body=test_body,
+                verbose=True
+            )
+
+            # 如果有严重错误，询问是否继续
+            if check_results.get('errors') and not check_results['passed']:
+                logger.error("\n发现严重问题，可能影响邮件送达:")
+                for error in check_results['errors']:
+                    logger.error(f"  - {error}")
+
+                confirm = input("\n是否仍要继续发送？(y/N): ").strip().lower()
+                if confirm != 'y':
+                    logger.info("已取消发送")
+                    return
+
+            # 如果有警告，显示但继续
+            elif check_results.get('warnings'):
+                logger.warning("\n发现以下警告:")
+                for warning in check_results['warnings']:
+                    logger.warning(f"  - {warning}")
+
+                confirm = input("\n是否继续发送？(y/N): ").strip().lower()
+                if confirm != 'y':
+                    logger.info("已取消发送")
+                    return
+
         total_recipients = len(recipients)
-        logger.info(f"准备发送 {total_recipients} 封邮件")
+        logger.info(f"\n准备发送 {total_recipients} 封邮件")
 
         success_count = 0
         fail_count = 0

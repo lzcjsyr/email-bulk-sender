@@ -145,7 +145,7 @@ SENDER_PASSWORD=your_auth_code    # 邮箱密码或授权码
 
 ### 步骤1：配置邮件模板
 
-编辑 `通用邮件群发/prompts.py`：
+编辑 `通用邮件群发/template.py`：
 
 ```python
 # 发件人配置
@@ -242,7 +242,7 @@ email-bulk-sender/
 │
 └── 通用邮件群发/
     ├── send_bulk_emails.py   # 群发脚本
-    ├── prompts.py            # 邮件模板配置
+    ├── template.py           # 邮件模板配置
     ├── 发送列表.xlsx         # 收件人列表
     └── attachments/          # 附件文件夹
 ```

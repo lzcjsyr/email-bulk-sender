@@ -25,7 +25,7 @@ from datetime import datetime
 import sys
 
 # 导入邮件模板配置
-from prompts import SENDER_NAME, EMAIL_SUBJECT, EMAIL_BODY
+from template import SENDER_NAME, EMAIL_SUBJECT, EMAIL_BODY
 
 # 加载环境变量（从上级目录读取.env文件）
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -83,10 +83,10 @@ class BulkEmailSender:
         self.sender_email: str = os.getenv('SENDER_EMAIL') or ''
         self.sender_password: str = os.getenv('SENDER_PASSWORD') or ''
 
-        # 发件人姓名（从prompts.py导入）
+        # 发件人姓名（从template.py导入）
         self.sender_name = SENDER_NAME
 
-        # 邮件模板（从prompts.py导入）
+        # 邮件模板（从template.py导入）
         self.email_subject_template = EMAIL_SUBJECT
         self.email_body_template = EMAIL_BODY
 
@@ -115,7 +115,7 @@ class BulkEmailSender:
             raise ValueError("请设置 SENDER_EMAIL 和 SENDER_PASSWORD 环境变量")
 
         if self.sender_name == "您的姓名":
-            logger.warning("请在 prompts.py 中设置 SENDER_NAME")
+            logger.warning("请在 template.py 中设置 SENDER_NAME")
 
         if self.dry_run:
             logger.info("=== DRY RUN 模式已启用 - 不会实际发送邮件 ===")
@@ -541,7 +541,7 @@ def main():
     logger.info("当前配置：")
     logger.info(f"  Excel文件：{excel_file}")
     logger.info(f"  附件文件夹：{attachments_folder}")
-    logger.info(f"  邮件模板：prompts.py")
+    logger.info(f"  邮件模板：template.py")
     logger.info(f"  日志文件：email_sender.log")
 
     dry_run = os.getenv('DRY_RUN', 'false').lower() == 'true'

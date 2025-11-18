@@ -1,22 +1,27 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/email_venv/bin/python",
-    "python.terminal.activateEnvironment": true,
-    "files.exclude": {
-        "**/__pycache__": true,
-        "**/*.pyc": true
-    },
-    "python.analysis.autoImportCompletions": true,
-    "python.analysis.typeCheckingMode": "basic",
-    "python.languageServer": "None",
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.python",
-        "editor.formatOnSave": false,
-        "editor.codeActionsOnSave": {
-            "source.organizeImports": "never"
-        }
-    },
-    "files.encoding": "utf8",
-    "files.autoGuessEncoding": false,
-    "cursorpyright.analysis.autoImportCompletions": true,
-    "cursorpyright.analysis.typeCheckingMode": "basic"
+  // 禁用 Pylance（使用基础 Python 扩展进行语法检查）
+  "python.languageServer": "None",
+
+  // 保留基本的 Python 支持
+  "python.autoComplete.addBrackets": true,
+
+  // 禁用自动格式化
+  "[python]": {
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "never"
+    }
+  },
+
+  // 禁用所有 linting（保持代码整洁）
+  "python.linting.enabled": false,
+  "python.linting.pylintEnabled": false,
+  "python.linting.flake8Enabled": false,
+  "python.linting.mypyEnabled": false,
+
+  // 排除目录
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  }
 }

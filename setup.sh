@@ -11,12 +11,25 @@ echo ""
 # 检查 Python 版本
 echo "[1/6] 检查 Python 环境..."
 if ! command -v python3 &> /dev/null; then
-    echo "错误：未找到 python3，请先安装 Python 3.6 或更高版本"
+    echo "错误：未找到 python3，请先安装 Python 3.13"
     exit 1
 fi
 
 PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+
 echo "✓ 检测到 Python $PYTHON_VERSION"
+
+# 检查是否为推荐版本
+if [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -eq 13 ]; then
+    echo "✓ 使用推荐版本 Python 3.13"
+elif [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -ge 6 ]; then
+    echo "⚠️  当前版本可用，但推荐使用 Python 3.13"
+else
+    echo "错误：需要 Python 3.6 或更高版本（推荐 3.13）"
+    exit 1
+fi
 echo ""
 
 # 创建虚拟环境
@@ -35,16 +48,36 @@ source email_venv/bin/activate
 echo "✓ 虚拟环境已激活"
 echo ""
 
-# 升级 pip
-echo "[4/6] 升级 pip..."
-python -m pip install --upgrade pip -q
-echo "✓ pip 已升级到最新版本"
+# 升级 pip 和安装依赖
+echo "[4/6] 安装项目依赖..."
+
+# 检测是否使用 uv
+if command -v uv &> /dev/null; then
+    echo "检测到 uv 环境，使用 uv pip 安装..."
+    # 使用 --python 参数指定当前虚拟环境的 Python
+    uv pip install -r requirements.txt --python ./email_venv/bin/python -q
+    echo "✓ 依赖安装完成 (使用 uv)"
+elif python3 -m pip --version &> /dev/null; then
+    echo "升级 pip..."
+    python3 -m pip install --upgrade pip -q
+    echo "安装依赖..."
+    python3 -m pip install -r requirements.txt -q
+    echo "✓ 依赖安装完成 (使用 pip)"
+else
+    echo "⚠️  未检测到 pip 或 uv，请手动安装依赖:"
+    echo "   uv pip install -r requirements.txt --python ./email_venv/bin/python"
+    echo "   或"
+    echo "   python3 -m pip install -r requirements.txt"
+fi
 echo ""
 
-# 安装依赖
-echo "[5/6] 安装项目依赖..."
-pip install -r requirements.txt -q
-echo "✓ 依赖安装完成"
+# 跳过原来的步骤5
+echo "[5/6] 验证安装..."
+if python3 -c "import pandas, openpyxl, dotenv, dkimpy, dns.resolver, premailer, html2text" 2>/dev/null; then
+    echo "✓ 所有依赖库已正确安装"
+else
+    echo "⚠️  部分依赖库可能未安装，请检查上面的输出"
+fi
 echo ""
 
 # 配置 VSCode

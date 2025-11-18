@@ -21,7 +21,7 @@ from datetime import datetime
 
 # 导入工具模块
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from email_utils import (
+from core.email_utils import (
     SMTPConnectionPool, retry_on_failure, validate_email,
     setup_logger, test_smtp_connection, format_time_remaining
 )

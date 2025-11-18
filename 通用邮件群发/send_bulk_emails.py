@@ -27,21 +27,17 @@ from typing import Optional
 
 # 导入邮件模板配置
 from template import SENDER_NAME, EMAIL_SUBJECT, EMAIL_BODY
-try:
-    from template import EMAIL_BODY_HTML
-except ImportError:
-    EMAIL_BODY_HTML = None
 
 # 导入增强功能模块
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
-    from email_security import DKIMSigner, run_pre_send_checks
-    from email_enhanced import (EnhancedEmailBuilder, SmartRetryHandler,
-                                 BounceHandler, add_unsubscribe_footer)
+    from core.email_security import DKIMSigner, run_pre_send_checks
+    from core.email_enhanced import (EnhancedEmailBuilder, SmartRetryHandler,
+                                      BounceHandler, add_unsubscribe_footer)
     ENHANCED_FEATURES_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"增强功能模块未找到或导入失败: {e}")
-    logging.warning("将使用基础功能。请确保email_security.py和email_enhanced.py在项目根目录")
+    logging.warning("将使用基础功能。请确保core/目录下的模块文件存在")
     ENHANCED_FEATURES_AVAILABLE = False
 
 # 加载环境变量（从上级目录读取.env文件）
@@ -106,7 +102,6 @@ class BulkEmailSender:
         # 邮件模板（从template.py导入）
         self.email_subject_template = EMAIL_SUBJECT
         self.email_body_template = EMAIL_BODY
-        self.email_body_html_template = EMAIL_BODY_HTML
 
         # 发送配置
         self.delay_between_emails = int(os.getenv('DELAY_BETWEEN_EMAILS', '5'))
@@ -129,9 +124,6 @@ class BulkEmailSender:
         self.max_emails_per_connection = 50  # 每个连接最多发送50封邮件
 
         # ===== 新增：增强功能配置 =====
-        # HTML邮件
-        self.enable_html = os.getenv('ENABLE_HTML_EMAIL', 'true').lower() == 'true'
-
         # 发送前安全检查
         self.enable_pre_send_checks = os.getenv('ENABLE_PRE_SEND_CHECKS', 'true').lower() == 'true'
 
@@ -185,7 +177,7 @@ class BulkEmailSender:
             # 反弹处理器
             self.bounce_handler = BounceHandler()
 
-            logger.info("增强功能已启用: HTML邮件, 智能重试, DKIM签名, 内容检查")
+            logger.info("增强功能已启用: 智能重试, DKIM签名, 内容检查")
         else:
             logger.warning("增强功能不可用,将使用基础发送功能")
 
@@ -413,7 +405,7 @@ class BulkEmailSender:
                                     attachment1, attachment2, retry_count=0):
         """
         发送单封带附件的邮件（支持双附件）
-        使用增强功能: HTML邮件、DKIM签名、智能重试等
+        使用增强功能: DKIM签名、智能重试等
         """
         try:
             # Dry-run模式：不实际发送
@@ -426,41 +418,39 @@ class BulkEmailSender:
 
             # 替换邮件标题和正文中的变量
             subject = self.format_email_content(self.email_subject_template, var1, var2, var3)
-            body_plain = self.format_email_content(self.email_body_template, var1, var2, var3)
+            body = self.format_email_content(self.email_body_template, var1, var2, var3)
 
-            # 处理HTML正文
-            body_html = None
-            if self.enable_html and self.email_body_html_template and ENHANCED_FEATURES_AVAILABLE:
-                body_html = self.format_email_content(self.email_body_html_template, var1, var2, var3)
-                # 添加退订信息到正文
-                if self.unsubscribe_email:
-                    from email_enhanced import add_unsubscribe_footer
-                    body_plain = add_unsubscribe_footer(body_plain, self.unsubscribe_email, 'plain')
-                    body_html = add_unsubscribe_footer(body_html, self.unsubscribe_email, 'html')
+            # 构建邮件
+            msg = MIMEMultipart('mixed')
 
-            # 使用增强邮件构建器或传统方式
-            if ENHANCED_FEATURES_AVAILABLE and self.email_builder:
-                # 使用增强功能构建邮件
-                msg = self.email_builder.build_message(
-                    recipient_email=recipient_email,
-                    subject=subject,
-                    body_plain=body_plain,
-                    body_html=body_html
-                )
+            # 使用标准的 RFC5322 格式：发件人姓名 <邮箱地址>
+            # 使用 formataddr 正确编码非ASCII字符（如中文姓名）
+            if self.sender_name:
+                from email.utils import formataddr
+                msg['From'] = formataddr((self.sender_name, self.sender_email))
             else:
-                # 传统方式构建邮件
-                msg = MIMEMultipart('alternative' if body_html else 'mixed')
                 msg['From'] = self.sender_email if self.sender_email else ''
-                msg['To'] = recipient_email
-                msg['Subject'] = subject
-                msg['Message-ID'] = make_msgid()
-                msg['Date'] = formatdate(localtime=True)
-                msg['MIME-Version'] = '1.0'
 
-                # 添加纯文本和HTML正文
-                msg.attach(MIMEText(body_plain, 'plain', 'utf-8'))
-                if body_html:
-                    msg.attach(MIMEText(body_html, 'html', 'utf-8'))
+            msg['To'] = recipient_email
+            msg['Subject'] = Header(subject, 'utf-8')
+            msg['Message-ID'] = make_msgid(domain=self.sender_email.split('@')[-1] if self.sender_email else 'localhost')
+            msg['Date'] = formatdate(localtime=True)
+            msg['MIME-Version'] = '1.0'
+
+            # 添加Reply-To头部（如果配置了不同的回复地址）
+            if self.reply_to and self.reply_to != self.sender_email:
+                msg['Reply-To'] = self.reply_to
+
+            # 添加退订头部（提高送达率）
+            if self.unsubscribe_email:
+                msg['List-Unsubscribe'] = f'<mailto:{self.unsubscribe_email}?subject=unsubscribe>'
+                msg['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+
+            # 批量邮件标识
+            msg['Precedence'] = 'bulk'
+
+            # 添加纯文本正文
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
             # 添加附件1
             att1_success = self.attach_file(msg, attachment1)

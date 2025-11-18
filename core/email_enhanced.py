@@ -6,10 +6,11 @@ import time
 import random
 import logging
 import smtplib
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.utils import make_msgid, formatdate
+from email.utils import make_msgid, formatdate, formataddr
+from email.header import Header
 
 try:
     from premailer import transform
@@ -211,14 +212,15 @@ class EnhancedEmailBuilder:
         # 创建multipart消息
         msg = MIMEMultipart('alternative')
 
-        # 基本头部
+        # 基本头部 - 使用 formataddr 正确编码非ASCII字符
         if self.sender_name:
-            msg['From'] = f"{self.sender_name} <{self.sender_email}>"
+            msg['From'] = formataddr((self.sender_name, self.sender_email))
         else:
             msg['From'] = self.sender_email
 
         msg['To'] = recipient_email
-        msg['Subject'] = subject
+        # 使用 Header 类确保主题正确编码
+        msg['Subject'] = Header(subject, 'utf-8').encode()
 
         # 关键头部(提高送达率)
         msg['Message-ID'] = make_msgid(domain=self.sender_email.split('@')[-1])
@@ -349,7 +351,7 @@ class BounceHandler:
     """反弹邮件处理器"""
 
     @staticmethod
-    def parse_smtp_response(exception: Exception) -> Optional[Dict[str, any]]:
+    def parse_smtp_response(exception: Exception) -> Optional[Dict[str, Any]]:
         """
         解析SMTP响应,提取反弹信息
 

@@ -16,11 +16,11 @@
 ### 🔒 邮件安全与送达率增强（NEW!）
 - ✅ **DKIM数字签名**：为邮件添加DKIM签名，大幅提高Gmail等邮箱的送达率
 - ✅ **SPF/DMARC验证**：发送前自动检查DNS配置，确保邮件身份验证
-- ✅ **HTML邮件支持**：同时发送纯文本和HTML格式，提高显示效果和送达率
 - ✅ **关键邮件头部**：自动添加List-Unsubscribe、Reply-To等合规头部
 - ✅ **内容安全检查**：自动检测垃圾邮件关键词和可疑URL，降低被拒风险
 - ✅ **IP信誉检查**：发送前检查发送IP是否在黑名单中
 - ✅ **退订机制**：符合CAN-SPAM等法规要求的一键退订功能
+- ✅ **RFC5322标准**：完全符合邮件格式规范，确保各大邮箱兼容
 
 ### 🚀 智能发送与容错
 - ✅ **SMTP连接池**：复用连接，提高发送效率和稳定性
@@ -36,7 +36,7 @@
 - ✅ **进度条显示**：实时查看发送进度和预计剩余时间
 - ✅ **模拟模式**：测试邮件配置而不实际发送(DRY_RUN=true)
 - ✅ **批量操作**：智能批次管理，避免触发邮件服务商限制
-- ✅ **CSS内联**：自动将HTML邮件的CSS内联，提高兼容性
+- ✅ **简洁设计**：纯文本邮件，简单高效，兼容所有邮箱
 
 ---
 
@@ -84,7 +84,6 @@ SENDER_EMAIL=your@email.com       # 发件人邮箱
 SENDER_PASSWORD=your_auth_code    # 邮箱密码或授权码
 
 # 增强功能（可选，但强烈建议配置以提高Gmail送达率）
-ENABLE_HTML_EMAIL=true            # 启用HTML邮件
 ENABLE_PRE_SEND_CHECKS=true       # 启用发送前安全检查
 # DKIM_DOMAIN=example.com         # DKIM域名（需配置DNS）
 # DKIM_SELECTOR=default           # DKIM选择器
@@ -257,8 +256,11 @@ email-bulk-sender/
 ├── setup.bat                 # Windows 安装脚本
 ├── README.md                 # 本文档
 │
-├── email_security.py         # 【NEW】邮件安全模块(DKIM/SPF/内容检查)
-├── email_enhanced.py         # 【NEW】增强发送模块(智能重试/错误分类)
+├── core/                     # 核心代码模块
+│   ├── __init__.py           # 模块初始化
+│   ├── email_security.py     # 【NEW】邮件安全模块(DKIM/SPF/内容检查)
+│   ├── email_enhanced.py     # 【NEW】增强发送模块(智能重试/错误分类)
+│   └── email_utils.py        # 工具函数
 │
 ├── email_venv/               # 虚拟环境（运行 setup 后自动创建）
 ├── logs/                     # 日志文件夹（自动创建）
@@ -706,8 +708,9 @@ A: DKIM虽然配置复杂,但对Gmail送达率提升最明显。建议:
 - ✅ 根据错误类型自动调整重试策略
 
 **📦 新增模块:**
-- `email_security.py` - 安全检查模块
-- `email_enhanced.py` - 增强发送模块
+- `core/email_security.py` - 安全检查模块
+- `core/email_enhanced.py` - 增强发送模块
+- `core/email_utils.py` - 工具函数模块
 
 ### v2.0 (2025-01-12)
 
